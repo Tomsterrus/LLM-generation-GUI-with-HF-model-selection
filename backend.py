@@ -1,8 +1,9 @@
 # backend.py
 import torch
 import psutil
+from threading import Thread
 from huggingface_hub import HfApi
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 
 # Global variables to store the loaded model and tokenizer
 current_model = None
@@ -110,14 +111,14 @@ def load_hf_model(model_id, device, log_callback, progress_callback):
         log_callback(f"Error loading model: {str(e)}")
         return False
 
-def generate_response(user_input):
+def generate_response_stream(user_input):
     global current_model, current_tokenizer
     
     if current_model is None or current_tokenizer is None:
-        return "Error: Model not loaded."
+        yield "Error: Model not loaded."
+        return
 
     try:
-        # Check if tokenizer has a chat template, otherwise use raw input
         if hasattr(current_tokenizer, "chat_template") and current_tokenizer.chat_template is not None:
             messages = [{"role": "user", "content": user_input}]
             prompt = current_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -126,17 +127,24 @@ def generate_response(user_input):
             
         inputs = current_tokenizer(prompt, return_tensors="pt").to(current_model.device)
         
-        with torch.no_grad():
-            outputs = current_model.generate(
-                **inputs, 
-                max_new_tokens=512,
-                do_sample=True,
-                temperature=0.7,
-                pad_token_id=current_tokenizer.eos_token_id
-            )
+        # Initialize the streamer
+        streamer = TextIteratorStreamer(current_tokenizer, skip_prompt=True, skip_special_tokens=True)
         
-        # Decode only new tokens
-        new_tokens = outputs[0][inputs['input_ids'].shape[-1]:]
-        return current_tokenizer.decode(new_tokens, skip_special_tokens=True)
+        generation_kwargs = dict(
+            **inputs,
+            streamer=streamer,
+            max_new_tokens=512,
+            do_sample=True,
+            temperature=0.7,
+            pad_token_id=current_tokenizer.eos_token_id
+        )
+
+        # Run generation in a separate thread to allow iteration
+        thread = Thread(target=current_model.generate, kwargs=generation_kwargs)
+        thread.start()
+
+        for new_text in streamer:
+            yield new_text
+
     except Exception as e:
-        return f"Error during generation: {str(e)}"
+        yield f"Error during generation: {str(e)}"

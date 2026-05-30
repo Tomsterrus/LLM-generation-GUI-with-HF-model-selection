@@ -17,10 +17,10 @@ class App(ctk.CTk):
         self.info_frame = ctk.CTkFrame(self)
         self.info_frame.pack(pady=10, padx=20, fill="x")
 
-        self.cpu_label = ctk.CTkLabel(self.info_frame, text="CPU Memory: Loading...")
+        self.cpu_label = ctk.CTkLabel(self.info_frame, text="CPU: Loading...")
         self.cpu_label.pack(pady=2, padx=10, anchor="w")
 
-        self.gpu_label = ctk.CTkLabel(self.info_frame, text="GPU Memory: Loading...")
+        self.gpu_label = ctk.CTkLabel(self.info_frame, text="GPU: Loading...")
         self.gpu_label.pack(pady=2, padx=10, anchor="w")
 
         # Top Control Frame
@@ -37,7 +37,7 @@ class App(ctk.CTk):
         self.load_button = ctk.CTkButton(self.control_frame, text="Load Model", command=self.handle_load_model, state="disabled")
         self.load_button.pack(side="left", padx=5)
 
-        # Progress Frame (Hidden initially)
+        # Progress Frame
         self.progress_frame = ctk.CTkFrame(self)
         self.progress_label = ctk.CTkLabel(self.progress_frame, text="Loading Safetensors: 0%")
         self.progress_label.pack(side="left", padx=10)
@@ -45,7 +45,7 @@ class App(ctk.CTk):
         self.progress_bar.pack(side="left", fill="x", expand=True, padx=10)
         self.progress_bar.set(0)
 
-        # Main View Container
+        # View Container
         self.view_container = ctk.CTkFrame(self)
         self.view_container.pack(pady=10, padx=20, fill="both", expand=True)
 
@@ -141,11 +141,15 @@ class App(ctk.CTk):
         threading.Thread(target=self.run_generation, args=(prompt,), daemon=True).start()
 
     def run_generation(self, prompt):
-        response = backend.generate_response(prompt)
-        self.after(0, lambda: self.finish_generation(response))
+        for token in backend.generate_response_stream(prompt):
+            self.after(0, lambda t=token: self.append_token(t))
+        self.after(0, self.finish_generation)
 
-    def finish_generation(self, response):
-        self.result_textbox.insert("end", response)
+    def append_token(self, token):
+        self.result_textbox.insert("end", token)
+        self.result_textbox.see("end")
+
+    def finish_generation(self):
         self.generate_button.configure(state="normal", text="Generate")
 
 if __name__ == "__main__":
