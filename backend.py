@@ -55,7 +55,9 @@ def fetch_compatible_models(max_memory_gb, log_callback):
     api = HfApi()
     log_callback("Fetching model list from Hugging Face...")
     
-    # Pobieramy wstępną listę (najpopularniejsze)
+    # Słowa kluczowe wskazujące na kwantyzację, których chcemy unikać
+    QUANT_KEYWORDS = ["gptq", "awq", "gguf", "exl2", "quantized", "4bit", "8bit", "bnb"]
+
     try:
         models = api.list_models(
             filter="text-generation",
@@ -70,20 +72,38 @@ def fetch_compatible_models(max_memory_gb, log_callback):
     
     for model in models:
         try:
-            # POBIERAMY PEŁNE INFO - to jest klucz do wykrycia 'gated'
             detailed_info = api.model_info(model.id, files_metadata=True)
-            
             log_callback(f"Model: {model.id}")
             
-            # Sprawdzenie Gated (może być True, "manual", "auto" - wszystko co nie jest False/None traktujemy jako zablokowane)
+            # 1. Sprawdzenie Gated
             is_gated = getattr(detailed_info, 'gated', False)
             if is_gated:
                 log_callback("  - Gated: YES (Requires HF authentication)")
                 log_callback("  - Status: SKIPPED")
                 log_callback("-" * 40)
                 continue
+
+            # 2. Sprawdzenie kwantyzacji (Tagi i Nazwa)
+            tags = [t.lower() for t in getattr(detailed_info, 'tags', [])]
+            model_id_lower = model.id.lower()
             
-            # Liczenie rozmiaru safetensors
+            is_quantized = any(k in model_id_lower for k in QUANT_KEYWORDS) or \
+                           any(k in tags for k in QUANT_KEYWORDS)
+            
+            # Sprawdzenie specyficznej sekcji w konfiguracji (jeśli dostępna)
+            if hasattr(detailed_info, 'config') and detailed_info.config:
+                if "quantization_config" in detailed_info.config:
+                    is_quantized = True
+
+            if is_quantized:
+                log_callback("  - Quantized: YES (Unsupported format)")
+                log_callback("  - Status: SKIPPED")
+                log_callback("-" * 40)
+                continue
+            else:
+                log_callback("  - Quantized: NO (Standard weights)")
+
+            # 3. Liczenie rozmiaru safetensors
             total_size_bytes = 0
             if hasattr(detailed_info, 'siblings') and detailed_info.siblings:
                 for file in detailed_info.siblings:
@@ -108,13 +128,12 @@ def fetch_compatible_models(max_memory_gb, log_callback):
                 log_callback("  - Status: INSUFFICIENT MEMORY")
             
         except Exception as e:
-            # Jeśli nie możemy pobrać info o modelu (np. 401 już na tym etapie), pomijamy go
-            log_callback(f"Model: {model.id} - Error: Private or restricted")
+            log_callback(f"Model: {model.id} - Error: {str(e)}")
         
         log_callback("-" * 40)
             
     return compatible_models
-
+   
 def load_hf_model(model_id, device, log_callback, progress_callback):
     global current_model, current_tokenizer, _progress_callback
     clear_memory()
