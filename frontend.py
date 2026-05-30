@@ -9,7 +9,7 @@ class App(ctk.CTk):
         super().__init__()
 
         self.title("HF Model Generator Environment")
-        self.geometry("800x850")
+        self.geometry("1200x650")
 
         self.found_models = {}
         self.is_scanning = False
@@ -130,7 +130,7 @@ class App(ctk.CTk):
         required_gb = self.found_models[selected_model]
         device = "cuda" if required_gb <= self.mem_data['gpu_available_gb'] else "cpu"
         
-        if device == "cpu" and not messagebox.askyesno("Warning", "Run on CPU?"):
+        if device == "cpu" and not messagebox.askyesno("Warning", "Run on CPU?\nThis will take much longer..."):
             return
 
         self.is_loading = True

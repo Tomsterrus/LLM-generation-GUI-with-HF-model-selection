@@ -55,47 +55,61 @@ def fetch_compatible_models(max_memory_gb, log_callback):
     api = HfApi()
     log_callback("Fetching model list from Hugging Face...")
     
-    models = api.list_models(
-        filter="text-generation",
-        sort="downloads",
-        limit=50,
-        expand=["siblings"]
-    )
+    # Pobieramy wstępną listę (najpopularniejsze)
+    try:
+        models = api.list_models(
+            filter="text-generation",
+            sort="downloads",
+            limit=50
+        )
+    except Exception as e:
+        log_callback(f"Error fetching list: {e}")
+        return {}
     
     compatible_models = {}
     
     for model in models:
-        total_size_bytes = 0
-        if hasattr(model, 'siblings') and model.siblings:
-            for file in model.siblings:
-                if file.rfilename.endswith(".safetensors"):
-                    if hasattr(file, 'size') and file.size is not None:
-                        total_size_bytes += file.size
+        try:
+            # POBIERAMY PEŁNE INFO - to jest klucz do wykrycia 'gated'
+            detailed_info = api.model_info(model.id, files_metadata=True)
             
-        if total_size_bytes == 0:
-            try:
-                detailed_info = api.model_info(model.id, files_metadata=True)
+            log_callback(f"Model: {model.id}")
+            
+            # Sprawdzenie Gated (może być True, "manual", "auto" - wszystko co nie jest False/None traktujemy jako zablokowane)
+            is_gated = getattr(detailed_info, 'gated', False)
+            if is_gated:
+                log_callback("  - Gated: YES (Requires HF authentication)")
+                log_callback("  - Status: SKIPPED")
+                log_callback("-" * 40)
+                continue
+            
+            # Liczenie rozmiaru safetensors
+            total_size_bytes = 0
+            if hasattr(detailed_info, 'siblings') and detailed_info.siblings:
                 for file in detailed_info.siblings:
                     if file.rfilename.endswith(".safetensors") and file.size:
                         total_size_bytes += file.size
-            except:
-                continue
-
-        if total_size_bytes == 0:
-            continue
             
-        size_gb = total_size_bytes / (1024 ** 3)
-        required_mem = size_gb * 1.1
-        
-        log_callback(f"Model: {model.id}")
-        log_callback(f"Safetensors size: {round(size_gb, 2)} GB")
-        log_callback(f"Estimated required memory (x1.1): {round(required_mem, 2)} GB")
-        
-        if required_mem <= max_memory_gb:
-            compatible_models[model.id] = round(required_mem, 2)
-            log_callback("Status: COMPATIBLE")
-        else:
-            log_callback("Status: INSUFFICIENT MEMORY")
+            if total_size_bytes == 0:
+                log_callback("  - Status: SKIPPED (No .safetensors found)")
+                log_callback("-" * 40)
+                continue
+                
+            size_gb = total_size_bytes / (1024 ** 3)
+            required_mem = size_gb * 1.1
+            
+            log_callback(f"  - Size: {round(size_gb, 2)} GB")
+            log_callback(f"  - Estimated RAM/VRAM: {round(required_mem, 2)} GB")
+            
+            if required_mem <= max_memory_gb:
+                compatible_models[model.id] = round(required_mem, 2)
+                log_callback("  - Status: COMPATIBLE")
+            else:
+                log_callback("  - Status: INSUFFICIENT MEMORY")
+            
+        except Exception as e:
+            # Jeśli nie możemy pobrać info o modelu (np. 401 już na tym etapie), pomijamy go
+            log_callback(f"Model: {model.id} - Error: Private or restricted")
         
         log_callback("-" * 40)
             
