@@ -1,6 +1,7 @@
 # backend.py
 import torch
 import psutil
+import gc
 from threading import Thread
 from huggingface_hub import HfApi
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
@@ -31,6 +32,14 @@ def get_system_memory():
         "gpu_total_gb": round(gpu_total, 2),
         "gpu_available_gb": round(gpu_available, 2)
     }
+
+def clear_memory():
+    global current_model, current_tokenizer
+    current_model = None
+    current_tokenizer = None
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 def fetch_compatible_models(max_memory_gb, log_callback):
     api = HfApi()
@@ -86,6 +95,9 @@ def fetch_compatible_models(max_memory_gb, log_callback):
 def load_hf_model(model_id, device, log_callback, progress_callback):
     global current_model, current_tokenizer
     
+    # Clear existing model from memory before loading a new one
+    clear_memory()
+    
     try:
         progress_callback(0.1)
         log_callback(f"Loading tokenizer for {model_id}...")
@@ -126,8 +138,6 @@ def generate_response_stream(user_input):
             prompt = user_input
             
         inputs = current_tokenizer(prompt, return_tensors="pt").to(current_model.device)
-        
-        # Initialize the streamer
         streamer = TextIteratorStreamer(current_tokenizer, skip_prompt=True, skip_special_tokens=True)
         
         generation_kwargs = dict(
@@ -139,7 +149,6 @@ def generate_response_stream(user_input):
             pad_token_id=current_tokenizer.eos_token_id
         )
 
-        # Run generation in a separate thread to allow iteration
         thread = Thread(target=current_model.generate, kwargs=generation_kwargs)
         thread.start()
 

@@ -12,6 +12,8 @@ class App(ctk.CTk):
         self.geometry("800x850")
 
         self.found_models = {}
+        self.is_scanning = False
+        self.is_loading = False
 
         # System Info Frame
         self.info_frame = ctk.CTkFrame(self)
@@ -23,7 +25,7 @@ class App(ctk.CTk):
         self.gpu_label = ctk.CTkLabel(self.info_frame, text="GPU: Loading...")
         self.gpu_label.pack(pady=2, padx=10, anchor="w")
 
-        # Top Control Frame
+        # Top Control Frame (Persistent)
         self.control_frame = ctk.CTkFrame(self)
         self.control_frame.pack(pady=10, padx=20, fill="x")
 
@@ -45,7 +47,7 @@ class App(ctk.CTk):
         self.progress_bar.pack(side="left", fill="x", expand=True, padx=10)
         self.progress_bar.set(0)
 
-        # View Container
+        # Main View Container
         self.view_container = ctk.CTkFrame(self)
         self.view_container.pack(pady=10, padx=20, fill="both", expand=True)
 
@@ -85,9 +87,12 @@ class App(ctk.CTk):
         else:
             gpu_text = "GPU: Not detected"
         self.gpu_label.configure(text=gpu_text)
+        
+        # Schedule next update
+        self.after(5000, self.update_memory_info)
 
     def add_log(self, message):
-        if hasattr(self, 'log_textbox'):
+        if hasattr(self, 'log_textbox') and self.log_textbox.winfo_exists():
             self.log_textbox.insert("end", message + "\n")
             self.log_textbox.see("end")
 
@@ -96,8 +101,11 @@ class App(ctk.CTk):
         self.progress_label.configure(text=f"Loading Safetensors: {int(value * 100)}%")
 
     def start_scan_thread(self):
+        if self.is_scanning or self.is_loading: return
         self.show_scan_logs_view()
+        self.is_scanning = True
         self.scan_button.configure(state="disabled")
+        self.load_button.configure(state="disabled")
         self.log_textbox.delete("1.0", "end")
         max_mem = max(self.mem_data['gpu_available_gb'], self.mem_data['cpu_available_gb'])
         threading.Thread(target=self.run_scan, args=(max_mem,), daemon=True).start()
@@ -111,27 +119,40 @@ class App(ctk.CTk):
                 self.model_var.set(model_names[0])
                 self.load_button.configure(state="normal")
         finally:
+            self.is_scanning = False
             self.scan_button.configure(state="normal")
 
     def handle_load_model(self):
+        if self.is_loading or self.is_scanning: return
         selected_model = self.model_var.get()
+        if selected_model == "No models loaded": return
+        
         required_gb = self.found_models[selected_model]
         device = "cuda" if required_gb <= self.mem_data['gpu_available_gb'] else "cpu"
         
         if device == "cpu" and not messagebox.askyesno("Warning", "Run on CPU?"):
             return
 
+        self.is_loading = True
         self.load_button.configure(state="disabled")
+        self.scan_button.configure(state="disabled")
+        
+        # Show logs before loading if we were in generation view
+        self.show_scan_logs_view()
         self.progress_frame.pack(after=self.control_frame, pady=5, padx=20, fill="x")
         self.set_progress(0)
         threading.Thread(target=self.run_load, args=(selected_model, device), daemon=True).start()
 
     def run_load(self, model_id, device):
-        if backend.load_hf_model(model_id, device, self.add_log, self.set_progress):
+        success = backend.load_hf_model(model_id, device, self.add_log, self.set_progress)
+        self.is_loading = False
+        if success:
             self.after(500, lambda: self.show_generation_view(model_id))
         else:
             self.after(0, lambda: self.progress_frame.pack_forget())
-            self.load_button.configure(state="normal")
+        
+        self.after(0, lambda: self.load_button.configure(state="normal"))
+        self.after(0, lambda: self.scan_button.configure(state="normal"))
 
     def start_generation_thread(self):
         prompt = self.prompt_input.get("1.0", "end-1c").strip()
@@ -146,11 +167,13 @@ class App(ctk.CTk):
         self.after(0, self.finish_generation)
 
     def append_token(self, token):
-        self.result_textbox.insert("end", token)
-        self.result_textbox.see("end")
+        if hasattr(self, 'result_textbox') and self.result_textbox.winfo_exists():
+            self.result_textbox.insert("end", token)
+            self.result_textbox.see("end")
 
     def finish_generation(self):
-        self.generate_button.configure(state="normal", text="Generate")
+        if hasattr(self, 'generate_button') and self.generate_button.winfo_exists():
+            self.generate_button.configure(state="normal", text="Generate")
 
 if __name__ == "__main__":
     ctk.set_appearance_mode("System")
