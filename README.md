@@ -7,6 +7,18 @@ A simple desktop environment for loading and generating text using Hugging Face 
 - **CUDA Toolkit**: 12.4 or compatible (if using an NVIDIA GPU)
 - **OS**: Windows
 
+## Setup & Configuration
+
+### 1. Hugging Face Token (Recommended)
+To avoid API rate limits and access more models, it's recommended to use a Hugging Face token:
+1. Create a token at [hf.co/settings/tokens](https://huggingface.co/settings/tokens).
+2. Set it as an environment variable:
+   - Windows (PowerShell): `$env:HF_TOKEN="your_token_here"`
+   - Or create a `.env` file in the project root.
+
+### 2. Windows Symlinks
+This application downloads large model files. To optimize disk space, it's recommended to enable **Developer Mode** in Windows Settings. This allows the Hugging Face library to use symbolic links instead of copying files.
+
 ## Installation
 
 1. Clone the repository:

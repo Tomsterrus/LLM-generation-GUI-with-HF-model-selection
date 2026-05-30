@@ -2,10 +2,13 @@
 import torch
 import psutil
 import gc
+import os
 from threading import Thread
 from huggingface_hub import HfApi
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 from tqdm import tqdm as original_tqdm
+
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
 _progress_callback = None
 
