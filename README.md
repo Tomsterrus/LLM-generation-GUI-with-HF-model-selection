@@ -23,7 +23,7 @@ python -3.12 -m venv venv
 
 pip install -r requirements.txt
 
-# Note: The standard torch installation usually includes the default CUDA dependencies. If your GPU is not detected, ensure your NVIDIA drivers are up to date or install a specific PyTorch version from [PyTorch Get Started.](https://pytorch.org/get-started/locally/)
+# Note: The standard torch installation usually includes the default CUDA dependencies. If your GPU is not detected, ensure your NVIDIA drivers are up to date or install a specific PyTorch version from [PyTorch Get Started.](https://pytorch.org/get-started/locally/). On my setup (Acer Nitro 12th Gen Intel(R) Core(TM) i5-12500H (3.10 GHz); 16,0 GB; NVIDIA GeForce RTX 3060 Laptop GPU (6 GB)), with Python 3.12.10, PyTorch available at https://download.pytorch.org/whl/cu124 was used.
 
 # Usage
 Run the application using the frontend script:

@@ -5,6 +5,16 @@ import gc
 from threading import Thread
 from huggingface_hub import HfApi
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
+from tqdm import tqdm as original_tqdm
+
+_progress_callback = None
+
+class _TqdmPatcher(original_tqdm):
+    def update(self, n=1):
+        result = super().update(n)
+        if _progress_callback and self.total:
+            _progress_callback(self.n / self.total)
+        return result
 
 # Global variables to store the loaded model and tokenizer
 current_model = None
@@ -48,7 +58,6 @@ def fetch_compatible_models(max_memory_gb, log_callback):
     models = api.list_models(
         filter="text-generation",
         sort="downloads",
-        direction=-1,
         limit=50,
         expand=["siblings"]
     )
@@ -93,35 +102,43 @@ def fetch_compatible_models(max_memory_gb, log_callback):
     return compatible_models
 
 def load_hf_model(model_id, device, log_callback, progress_callback):
-    global current_model, current_tokenizer
-    
-    # Clear existing model from memory before loading a new one
+    global current_model, current_tokenizer, _progress_callback
     clear_memory()
-    
+
     try:
-        progress_callback(0.1)
+        import transformers
+        import tqdm as tqdm_module
+        
+        _progress_callback = progress_callback
+        original = tqdm_module.tqdm
+        tqdm_module.tqdm = _TqdmPatcher
+        transformers.utils.logging.disable_progress_bar()  # wyłącz domyślny pasek
+
+        progress_callback(0.0)
         log_callback(f"Loading tokenizer for {model_id}...")
         current_tokenizer = AutoTokenizer.from_pretrained(model_id)
-        
-        progress_callback(0.3)
+
         log_callback(f"Initializing model on {device}...")
-        
         device_map = "auto" if device == "cuda" else "cpu"
-        
-        progress_callback(0.5)
+
         current_model = AutoModelForCausalLM.from_pretrained(
             model_id,
             torch_dtype="auto",
             device_map=device_map,
             low_cpu_mem_usage=True
         )
-        
+
         progress_callback(1.0)
-        log_callback("Model and tokenizer loaded successfully.")
+        log_callback("Model loaded successfully.")
         return True
+
     except Exception as e:
         log_callback(f"Error loading model: {str(e)}")
         return False
+
+    finally:
+        tqdm_module.tqdm = original
+        _progress_callback = None
 
 def generate_response_stream(user_input):
     global current_model, current_tokenizer
