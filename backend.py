@@ -58,14 +58,14 @@ def fetch_compatible_models(max_memory_gb, log_callback):
     api = HfApi()
     log_callback("Fetching model list from Hugging Face...")
     
-    # Słowa kluczowe wskazujące na kwantyzację, których chcemy unikać
+    # Quantization keywords to avoid
     QUANT_KEYWORDS = ["gptq", "awq", "gguf", "exl2", "quantized", "4bit", "8bit", "bnb"]
 
     try:
         models = api.list_models(
             filter="text-generation",
             sort="downloads",
-            limit=50
+            limit=50 #increase this parameter to get a longer list of models
         )
     except Exception as e:
         log_callback(f"Error fetching list: {e}")
@@ -78,7 +78,7 @@ def fetch_compatible_models(max_memory_gb, log_callback):
             detailed_info = api.model_info(model.id, files_metadata=True)
             log_callback(f"Model: {model.id}")
             
-            # 1. Sprawdzenie Gated
+            # 1. Checking if model is gated
             is_gated = getattr(detailed_info, 'gated', False)
             if is_gated:
                 log_callback("  - Gated: YES (Requires HF authentication)")
@@ -86,14 +86,14 @@ def fetch_compatible_models(max_memory_gb, log_callback):
                 log_callback("-" * 40)
                 continue
 
-            # 2. Sprawdzenie kwantyzacji (Tagi i Nazwa)
+            # 2. Checking for quantization
             tags = [t.lower() for t in getattr(detailed_info, 'tags', [])]
             model_id_lower = model.id.lower()
             
             is_quantized = any(k in model_id_lower for k in QUANT_KEYWORDS) or \
                            any(k in tags for k in QUANT_KEYWORDS)
             
-            # Sprawdzenie specyficznej sekcji w konfiguracji (jeśli dostępna)
+            # Checking dedicated configuration section
             if hasattr(detailed_info, 'config') and detailed_info.config:
                 if "quantization_config" in detailed_info.config:
                     is_quantized = True
@@ -106,7 +106,7 @@ def fetch_compatible_models(max_memory_gb, log_callback):
             else:
                 log_callback("  - Quantized: NO (Standard weights)")
 
-            # 3. Liczenie rozmiaru safetensors
+            # 3. Safetensors size count
             total_size_bytes = 0
             if hasattr(detailed_info, 'siblings') and detailed_info.siblings:
                 for file in detailed_info.siblings:
@@ -148,7 +148,7 @@ def load_hf_model(model_id, device, log_callback, progress_callback):
         _progress_callback = progress_callback
         original = tqdm_module.tqdm
         tqdm_module.tqdm = _TqdmPatcher
-        transformers.utils.logging.disable_progress_bar()  # wyłącz domyślny pasek
+        transformers.utils.logging.disable_progress_bar()  # disable default bar
 
         progress_callback(0.0)
         log_callback(f"Loading tokenizer for {model_id}...")
