@@ -68,7 +68,6 @@ def fetch_compatible_models(max_memory_gb, log_callback):
         size_gb = total_size_bytes / (1024 ** 3)
         required_mem = size_gb * 1.1
         
-        # Display detailed model info in logs
         log_callback(f"Model: {model.id}")
         log_callback(f"Safetensors size: {round(size_gb, 2)} GB")
         log_callback(f"Estimated required memory (x1.1): {round(required_mem, 2)} GB")
@@ -96,7 +95,6 @@ def load_hf_model(model_id, device, log_callback, progress_callback):
         
         device_map = "auto" if device == "cuda" else "cpu"
         
-        # Progress is simulated as transformers doesn't expose granular percentage for from_pretrained
         progress_callback(0.5)
         current_model = AutoModelForCausalLM.from_pretrained(
             model_id,
@@ -111,3 +109,34 @@ def load_hf_model(model_id, device, log_callback, progress_callback):
     except Exception as e:
         log_callback(f"Error loading model: {str(e)}")
         return False
+
+def generate_response(user_input):
+    global current_model, current_tokenizer
+    
+    if current_model is None or current_tokenizer is None:
+        return "Error: Model not loaded."
+
+    try:
+        # Check if tokenizer has a chat template, otherwise use raw input
+        if hasattr(current_tokenizer, "chat_template") and current_tokenizer.chat_template is not None:
+            messages = [{"role": "user", "content": user_input}]
+            prompt = current_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        else:
+            prompt = user_input
+            
+        inputs = current_tokenizer(prompt, return_tensors="pt").to(current_model.device)
+        
+        with torch.no_grad():
+            outputs = current_model.generate(
+                **inputs, 
+                max_new_tokens=512,
+                do_sample=True,
+                temperature=0.7,
+                pad_token_id=current_tokenizer.eos_token_id
+            )
+        
+        # Decode only new tokens
+        new_tokens = outputs[0][inputs['input_ids'].shape[-1]:]
+        return current_tokenizer.decode(new_tokens, skip_special_tokens=True)
+    except Exception as e:
+        return f"Error during generation: {str(e)}"
