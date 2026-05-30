@@ -22,5 +22,5 @@ Thumbs.db          # Windows
 *.pth
 *.gguf
 
-# Twoje własne skrypty testowe
+.vscode/settings.json
 test_hf_size.py
