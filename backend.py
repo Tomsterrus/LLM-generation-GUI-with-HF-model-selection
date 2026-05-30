@@ -4,12 +4,10 @@ import psutil
 from huggingface_hub import HfApi
 
 def get_system_memory():
-    # CPU Memory
     vm = psutil.virtual_memory()
     cpu_total = vm.total / (1024 ** 3)
     cpu_available = vm.available / (1024 ** 3)
     
-    # GPU Memory
     gpu_total = 0.0
     gpu_available = 0.0
     gpu_name = "No GPU"
@@ -32,7 +30,6 @@ def fetch_compatible_models(max_memory_gb, log_callback):
     api = HfApi()
     log_callback("Fetching model list from Hugging Face...")
     
-    # Use 'expand' to get siblings (files) info in list_models
     models = api.list_models(
         filter="text-generation",
         sort="downloads",
@@ -41,20 +38,16 @@ def fetch_compatible_models(max_memory_gb, log_callback):
         expand=["siblings"]
     )
     
-    compatible_models = []
+    compatible_models = {} # Changed to dict to store model_id: required_gb
     
     for model in models:
         total_size_bytes = 0
-        # Access siblings to calculate size
         if hasattr(model, 'siblings') and model.siblings:
             for file in model.siblings:
                 if file.rfilename.endswith(".safetensors"):
-                    # For list_models, size might not be in siblings directly, 
-                    # we may need to fetch specific model info if size is missing
                     if hasattr(file, 'size') and file.size is not None:
                         total_size_bytes += file.size
             
-        # If size is still 0 but it's a popular model, try a specific info call
         if total_size_bytes == 0:
             try:
                 detailed_info = api.model_info(model.id, files_metadata=True)
@@ -73,7 +66,7 @@ def fetch_compatible_models(max_memory_gb, log_callback):
         log_callback(f"Checking {model.id}: {round(size_gb, 2)} GB (Req: {round(required_mem, 2)} GB)")
         
         if required_mem <= max_memory_gb:
-            compatible_models.append(model.id)
+            compatible_models[model.id] = round(required_mem, 2)
             log_callback(f"-> Match found: {model.id}")
             
     return compatible_models
