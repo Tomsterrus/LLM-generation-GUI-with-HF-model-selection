@@ -9,8 +9,10 @@ A desktop GUI for discovering, loading, and interacting with Large Language Mode
     - Access Rights: Identifies and filters out "Gated" models requiring manual approval.
     - Format Support: Detects and skips quantized formats (GPTQ, AWQ, GGUF) incompatible with standard transformers loading.
 - Live Hardware Monitoring: Real-time tracking of CPU and GPU (NVIDIA) memory usage.
+- Security-First Validation: Automatically detects and skips models that require custom Python code execution (`trust_remote_code=True`). The application identifies these by scanning for the `auto_map` property in the model configuration, protecting the local environment from potentially unverified remote scripts.
 - Streaming Interface: Real-time text generation response streaming.
 - Robust Backend: Decoupled architecture separating UI logic from heavy model operations.
+
 
 ## Tech Stack
 
