@@ -93,6 +93,20 @@ def fetch_compatible_models(max_memory_gb, log_callback):
             is_quantized = any(k in model_id_lower for k in QUANT_KEYWORDS) or \
                            any(k in tags for k in QUANT_KEYWORDS)
             
+            #3. Checking for custom code
+
+            has_remote_code = False
+            if hasattr(detailed_info, 'config') and detailed_info.config:
+                if "auto_map" in detailed_info.config:
+                    has_remote_code = True
+            
+            if has_remote_code:
+                log_callback("  - Custom Code: YES (Security Risk)")
+                log_callback("  - Status: SKIPPED")
+                log_callback("-" * 40)
+                continue
+            else:
+                log_callback("  - Custom Code: NO (Safe)")
             # Checking dedicated configuration section
             if hasattr(detailed_info, 'config') and detailed_info.config:
                 if "quantization_config" in detailed_info.config:
