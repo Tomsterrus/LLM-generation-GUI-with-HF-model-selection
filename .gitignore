@@ -1,4 +1,26 @@
-\venv
+.venv/
+env/
+/venv
+
 __pycache__/
 *.pyc
-\.vscode
+*.pyo
+*.pyd
+
+.vscode/
+.idea/
+*.swp
+
+Thumbs.db          # Windows
+
+.env
+.env.local
+
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+
+# Twoje własne skrypty testowe
+test_hf_size.py

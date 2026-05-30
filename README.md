@@ -1,6 +1,6 @@
 # HF Model Generator Environment
 
-A desktop GUI for discovering, loading, and interacting with Large Language Models (LLMs) from Hugging Face. Built with `customtkinter`, it provides a streamlined workflow for testing models while monitoring hardware constraints.
+A simple desktop GUI for discovering, loading, and interacting with Large Language Models (LLMs) from Hugging Face. Built with `customtkinter`, it provides a streamlined workflow for testing models while monitoring hardware constraints.
 
 ## Key Features
 
@@ -43,7 +43,7 @@ To optimize disk space and prevent file duplication, enable Developer Mode in Wi
 ## Installation
 
 1. Clone the repository:
-git clone https://github.com/YOUR_USERNAME/generation-with-model-selection.git
+git clone https://github.com/Tomsterrus/LLM-generation-GUI-with-HF-model-selection
 cd generation-with-model-selection
 
 2. Create and activate a virtual environment:
