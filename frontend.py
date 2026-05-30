@@ -9,9 +9,9 @@ class App(ctk.CTk):
         super().__init__()
 
         self.title("HF Model Generator Environment")
-        self.geometry("700x650")
+        self.geometry("800x800")
 
-        self.found_models = {} # Stores {model_id: required_gb}
+        self.found_models = {}
 
         # System Info Frame
         self.info_frame = ctk.CTkFrame(self)
@@ -23,28 +23,64 @@ class App(ctk.CTk):
         self.gpu_label = ctk.CTkLabel(self.info_frame, text="GPU Memory: Loading...")
         self.gpu_label.pack(pady=2, padx=10, anchor="w")
 
-        # Control Frame
+        # Top Control Frame
         self.control_frame = ctk.CTkFrame(self)
         self.control_frame.pack(pady=10, padx=20, fill="x")
 
         self.scan_button = ctk.CTkButton(self.control_frame, text="Scan HF Models", command=self.start_scan_thread)
-        self.scan_button.pack(side="left", pady=10, padx=10)
+        self.scan_button.pack(side="left", padx=5)
 
         self.model_var = ctk.StringVar(value="No models loaded")
         self.model_dropdown = ctk.CTkOptionMenu(self.control_frame, variable=self.model_var, values=["No models loaded"], width=300)
-        self.model_dropdown.pack(side="left", pady=10, padx=10)
+        self.model_dropdown.pack(side="left", padx=5)
 
         self.load_button = ctk.CTkButton(self.control_frame, text="Load Model", command=self.handle_load_model, state="disabled")
-        self.load_button.pack(side="left", pady=10, padx=10)
+        self.load_button.pack(side="left", padx=5)
 
-        # Log Window
-        self.log_label = ctk.CTkLabel(self, text="Processing Logs:")
-        self.log_label.pack(pady=(10, 0), padx=20, anchor="w")
+        # Progress Frame (Hidden by default)
+        self.progress_frame = ctk.CTkFrame(self)
         
-        self.log_textbox = ctk.CTkTextbox(self, height=300)
-        self.log_textbox.pack(pady=10, padx=20, fill="both", expand=True)
+        self.progress_label = ctk.CTkLabel(self.progress_frame, text="Loading Safetensors: 0%")
+        self.progress_label.pack(side="left", padx=10)
+        
+        self.progress_bar = ctk.CTkProgressBar(self.progress_frame, orientation="horizontal")
+        self.progress_bar.pack(side="left", fill="x", expand=True, padx=10)
+        self.progress_bar.set(0)
 
+        # View Container
+        self.view_container = ctk.CTkFrame(self)
+        self.view_container.pack(pady=10, padx=20, fill="both", expand=True)
+
+        self.show_scan_logs_view()
         self.update_memory_info()
+
+    def show_scan_logs_view(self):
+        for widget in self.view_container.winfo_children():
+            widget.destroy()
+            
+        self.log_label = ctk.CTkLabel(self.view_container, text="Model Scanning & System Logs:")
+        self.log_label.pack(anchor="w", padx=10, pady=(5,0))
+        
+        self.log_textbox = ctk.CTkTextbox(self.view_container)
+        self.log_textbox.pack(pady=10, padx=10, fill="both", expand=True)
+
+    def show_generation_view(self, model_id):
+        self.progress_frame.pack_forget()
+        for widget in self.view_container.winfo_children():
+            widget.destroy()
+
+        self.gen_label = ctk.CTkLabel(self.view_container, text=f"Active Model: {model_id}", font=("Arial", 14, "bold"))
+        self.gen_label.pack(pady=5)
+
+        self.prompt_input = ctk.CTkTextbox(self.view_container, height=150)
+        self.prompt_input.pack(pady=5, padx=10, fill="x")
+        self.prompt_input.insert("1.0", "Enter your prompt here...")
+
+        self.generate_button = ctk.CTkButton(self.view_container, text="Generate", command=self.handle_generation)
+        self.generate_button.pack(pady=10)
+
+        self.result_textbox = ctk.CTkTextbox(self.view_container, height=300)
+        self.result_textbox.pack(pady=5, padx=10, fill="both", expand=True)
 
     def update_memory_info(self):
         self.mem_data = backend.get_system_memory()
@@ -58,18 +94,20 @@ class App(ctk.CTk):
         self.gpu_label.configure(text=gpu_text)
 
     def add_log(self, message):
-        self.log_textbox.insert("end", message + "\n")
-        self.log_textbox.see("end")
+        if hasattr(self, 'log_textbox') and self.log_textbox.winfo_exists():
+            self.log_textbox.insert("end", message + "\n")
+            self.log_textbox.see("end")
+
+    def set_progress(self, value):
+        self.progress_bar.set(value)
+        self.progress_label.configure(text=f"Loading Safetensors: {int(value * 100)}%")
 
     def start_scan_thread(self):
+        self.show_scan_logs_view()
         self.scan_button.configure(state="disabled")
-        self.load_button.configure(state="disabled")
         self.log_textbox.delete("1.0", "end")
         
-        # Determine max available memory between CPU and GPU
         max_mem = max(self.mem_data['gpu_available_gb'], self.mem_data['cpu_available_gb'])
-        self.add_log(f"Scanning models for max available resource ({max_mem} GB)...")
-
         thread = threading.Thread(target=self.run_scan, args=(max_mem,), daemon=True)
         thread.start()
 
@@ -82,42 +120,44 @@ class App(ctk.CTk):
                 self.model_var.set(model_names[0])
                 self.load_button.configure(state="normal")
                 self.add_log(f"Done. Found {len(self.found_models)} compatible models.")
-            else:
-                self.add_log("No compatible models found within memory limits.")
-        except Exception as e:
-            self.add_log(f"Error during scan: {str(e)}")
         finally:
             self.scan_button.configure(state="normal")
 
     def handle_load_model(self):
         selected_model = self.model_var.get()
-        if selected_model not in self.found_models:
-            return
-
         required_gb = self.found_models[selected_model]
         gpu_avail = self.mem_data['gpu_available_gb']
 
-        if required_gb <= gpu_avail:
-            self.add_log(f"Loading {selected_model} to GPU...")
-            self.proceed_to_next_step(selected_model, "cuda")
-        else:
-            # Check if it fits in CPU
-            if required_gb <= self.mem_data['cpu_available_gb']:
-                answer = messagebox.askyesno("Warning", "Not enough GPU RAM available. Run the model on CPU instead? (Requires lots of patience...)")
-                if answer:
-                    self.add_log(f"Loading {selected_model} to CPU...")
-                    self.proceed_to_next_step(selected_model, "cpu")
-                else:
-                    self.add_log("Load cancelled by user.")
+        device = "cuda"
+        if required_gb > gpu_avail:
+            if messagebox.askyesno("Warning", "Not enough GPU RAM available. Run the model on CPU instead? (Requires lots of patience...)"):
+                device = "cpu"
             else:
-                self.add_log("Error: Model no longer fits in available system memory.")
+                return
 
-    def proceed_to_next_step(self, model_id, device):
-        # Placeholder for next step
-        self.add_log(f"Ready to initialize {model_id} on {device.upper()}.")
+        self.load_button.configure(state="disabled")
+        self.scan_button.configure(state="disabled")
+        
+        # Show progress bar only for loading
+        self.progress_frame.pack(after=self.control_frame, pady=5, padx=20, fill="x")
+        self.set_progress(0)
+        
+        thread = threading.Thread(target=self.run_load, args=(selected_model, device), daemon=True)
+        thread.start()
+
+    def run_load(self, model_id, device):
+        success = backend.load_hf_model(model_id, device, self.add_log, self.set_progress)
+        if success:
+            self.after(500, lambda: self.show_generation_view(model_id))
+        else:
+            self.after(0, lambda: self.progress_frame.pack_forget())
+            self.load_button.configure(state="normal")
+            self.scan_button.configure(state="normal")
+
+    def handle_generation(self):
+        self.result_textbox.insert("end", "Generation logic not yet connected.\n")
 
 if __name__ == "__main__":
     ctk.set_appearance_mode("System")
-    ctk.set_default_color_theme("blue")
     app = App()
     app.mainloop()

@@ -2,6 +2,11 @@
 import torch
 import psutil
 from huggingface_hub import HfApi
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# Global variables to store the loaded model and tokenizer
+current_model = None
+current_tokenizer = None
 
 def get_system_memory():
     vm = psutil.virtual_memory()
@@ -38,7 +43,7 @@ def fetch_compatible_models(max_memory_gb, log_callback):
         expand=["siblings"]
     )
     
-    compatible_models = {} # Changed to dict to store model_id: required_gb
+    compatible_models = {}
     
     for model in models:
         total_size_bytes = 0
@@ -63,10 +68,46 @@ def fetch_compatible_models(max_memory_gb, log_callback):
         size_gb = total_size_bytes / (1024 ** 3)
         required_mem = size_gb * 1.1
         
-        log_callback(f"Checking {model.id}: {round(size_gb, 2)} GB (Req: {round(required_mem, 2)} GB)")
+        # Display detailed model info in logs
+        log_callback(f"Model: {model.id}")
+        log_callback(f"Safetensors size: {round(size_gb, 2)} GB")
+        log_callback(f"Estimated required memory (x1.1): {round(required_mem, 2)} GB")
         
         if required_mem <= max_memory_gb:
             compatible_models[model.id] = round(required_mem, 2)
-            log_callback(f"-> Match found: {model.id}")
+            log_callback("Status: COMPATIBLE")
+        else:
+            log_callback("Status: INSUFFICIENT MEMORY")
+        
+        log_callback("-" * 40)
             
     return compatible_models
+
+def load_hf_model(model_id, device, log_callback, progress_callback):
+    global current_model, current_tokenizer
+    
+    try:
+        progress_callback(0.1)
+        log_callback(f"Loading tokenizer for {model_id}...")
+        current_tokenizer = AutoTokenizer.from_pretrained(model_id)
+        
+        progress_callback(0.3)
+        log_callback(f"Initializing model on {device}...")
+        
+        device_map = "auto" if device == "cuda" else "cpu"
+        
+        # Progress is simulated as transformers doesn't expose granular percentage for from_pretrained
+        progress_callback(0.5)
+        current_model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            torch_dtype="auto",
+            device_map=device_map,
+            low_cpu_mem_usage=True
+        )
+        
+        progress_callback(1.0)
+        log_callback("Model and tokenizer loaded successfully.")
+        return True
+    except Exception as e:
+        log_callback(f"Error loading model: {str(e)}")
+        return False
